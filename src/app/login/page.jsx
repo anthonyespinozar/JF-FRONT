@@ -5,15 +5,22 @@ import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Bus } from "lucide-react";
+import { Bus, Loader2, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
+import { signIn } from "next-auth/react";
 
 const formSchema = z.object({
-  email: z.string().email({ message: "Por favor ingrese un email válido." }),
-  password: z.string().min(6, { message: "La contraseña debe tener al menos 6 caracteres." }),
+  correo: z
+    .string()
+    .min(1, { message: "El correo es requerido" })
+    .email({ message: "Ingrese un correo electrónico válido" }),
+  password: z
+    .string()
+    .min(1, { message: "La contraseña es requerida" })
+    .min(6, { message: "La contraseña debe tener al menos 6 caracteres" })
 });
 
 export default function LoginPage() {
@@ -24,7 +31,7 @@ export default function LoginPage() {
   const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: "",
+      correo: "",
       password: "",
     },
   });
@@ -32,30 +39,31 @@ export default function LoginPage() {
   async function onSubmit(values) {
     setIsLoading(true);
     setErrorMessage("");
-
     try {
       const result = await signIn("credentials", {
-        email: values.email,
-        password: values.password,
         redirect: false,
+        correo: values.correo,
+        password: values.password,
       });
 
-      if (result.error) {
-        console.error('Error en login:', result.error);
-        setErrorMessage(result.error || "Error al iniciar sesión");
-        return;
+      if (result?.error) {
+        throw new Error(result.error);
       }
 
-      if (result.ok) {
-        console.log('✅ Login exitoso');
-        router.push("/dashboard"); // o la ruta que prefieras
-        router.refresh();
+      if (result?.ok) {
+        toast.success("Inicio de sesión exitoso");
+        // Redirigir según el rol del usuario
+        const userRole = result?.user?.role;
+        if (userRole === 'CHOFER') {
+          router.push('/chofer/dashboard');
+        } else {
+          router.push('/');
+        }
       }
     } catch (error) {
-      console.error('Error inesperado:', error);
-      setErrorMessage(
-        "Error al iniciar sesión. Por favor, intente nuevamente."
-      );
+      console.error("Error en login:", error);
+      setErrorMessage(error.message || "Error al iniciar sesión");
+      toast.error(error.message || "Error al iniciar sesión");
     } finally {
       setIsLoading(false);
     }
@@ -69,22 +77,36 @@ export default function LoginPage() {
             <Bus className="h-6 w-6 text-primary-foreground" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">FleetMaster</h1>
-          <p className="text-sm text-muted-foreground">Ingrese sus credenciales para acceder al sistema</p>
+          <p className="text-sm text-muted-foreground">
+            Ingrese sus credenciales para acceder al sistema
+          </p>
         </div>
+
+        {errorMessage && (
+          <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-md flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" />
+            <p className="text-sm font-medium">{errorMessage}</p>
+          </div>
+        )}
+
         <div className="grid gap-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
                 control={form.control}
-                name="email"
+                name="correo"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>Correo electrónico</FormLabel>
                     <FormControl>
                       <Input 
                         placeholder="ejemplo@fleetmaster.com" 
                         {...field} 
                         disabled={isLoading}
+                        className={`transition-all duration-200 focus:ring-2 focus:ring-primary
+                          ${form.formState.errors.correo ? 'border-destructive' : ''}`}
+                        type="email"
+                        autoComplete="email"
                       />
                     </FormControl>
                     <FormMessage />
@@ -102,26 +124,24 @@ export default function LoginPage() {
                         type="password" 
                         {...field} 
                         disabled={isLoading}
+                        className={`transition-all duration-200 focus:ring-2 focus:ring-primary
+                          ${form.formState.errors.password ? 'border-destructive' : ''}`}
+                        autoComplete="current-password"
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              {errorMessage && (
-                <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                  {errorMessage}
-                </div>
-              )}
               <Button 
                 type="submit" 
-                className="w-full" 
+                className="w-full transition-all duration-200"
                 disabled={isLoading}
               >
                 {isLoading ? (
                   <>
-                    <span className="loading loading-spinner"></span>
-                    Iniciando sesión...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Verificando credenciales...
                   </>
                 ) : (
                   "Iniciar sesión"

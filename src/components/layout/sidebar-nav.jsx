@@ -7,9 +7,9 @@ import { useState } from "react"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarRail } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { UserAvatar } from "@/components/ui/user-avatar"
-import { useSession, signOut } from "next-auth/react"
+import { signOut, useSession } from "next-auth/react"
 
-const navItems = [
+const adminNavItems = [
   { title: "Dashboard", href: "/", icon: BarChart3 },
   { title: "Unidades", href: "/unidades", icon: Bus },
   { title: "Dueños", href: "/duenos", icon: Building2 },
@@ -20,23 +20,43 @@ const navItems = [
   { title: "Usuarios", href: "/usuarios", icon: Users },
 ]
 
+const choferNavItems = [
+  { title: "Dashboard", href: "/chofer/dashboard", icon: BarChart3 },
+  { title: "Mi Unidad", href: "/chofer/unidad", icon: Bus },
+  { title: "Mantenimientos", href: "/chofer/mantenimientos", icon: Wrench },
+  { title: "Reportes", href: "/chofer/reportes", icon: FileBarChart },
+]
+
 export function SidebarNav() {
   const pathname = usePathname()
   const router = useRouter()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const { data: session, status } = useSession()
 
-  // Si está cargando o no hay sesión, no mostrar el sidebar
-  if (status === "loading" || !session) {
+  // Si está cargando, muestra un skeleton
+  if (status === "loading") {
+    return (
+      <div className="h-screen w-[280px] bg-sidebar animate-pulse">
+        {/* Puedes agregar un skeleton aquí */}
+      </div>
+    )
+  }
+
+  // Si no hay sesión, no mostrar el sidebar
+  if (!session) {
     return null
   }
 
   const handleLogout = async () => {
-    await signOut({ 
-      redirect: true,
-      callbackUrl: '/login'
-    })
+    try {
+      await signOut({ redirect: true, callbackUrl: '/login' })
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error)
+    }
   }
+
+  // Determinar qué items mostrar según el rol
+  const navItems = session.user.role === 'CHOFER' ? choferNavItems : adminNavItems
 
   return (
     <div className="relative">
@@ -86,10 +106,10 @@ export function SidebarNav() {
                 <>
                   <div className="flex-1">
                     <p className="text-sm font-medium leading-none text-sidebar-foreground">
-                      {session.user.name}
+                      {session.user.nombre}
                     </p>
                     <p className="text-xs text-sidebar-foreground/70 mt-1">
-                      {session.user.role || 'Usuario'}
+                      {session.user.role}
                     </p>
                   </div>
                   <Button 

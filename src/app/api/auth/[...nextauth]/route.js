@@ -6,37 +6,35 @@ export const authOptions = {
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        email: { label: "Correo", type: "email" },
+        correo: { label: "Correo", type: "email" },
         password: { label: "Contraseña", type: "password" }
       },
       async authorize(credentials) {
         try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}api/auth/login`, {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
             method: 'POST',
-            body: JSON.stringify({
-              correo: credentials?.email,
-              password: credentials?.password,
-            }),
-            headers: { "Content-Type": "application/json" }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(credentials)
           });
-          
-          const data = await res.json();
 
-          if (!res.ok) {
-            throw new Error(data.message || "Error en la autenticación");
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.error || 'Error en la autenticación');
           }
-          
-          return {
-            id: data.user.id,
-            email: data.user.correo,
-            name: data.user.nombre,
-            role: data.user.role,
-            backendTokens: {
-              accessToken: data.token
-            }
-          };
+
+          if (data.token && data.user) {
+            return {
+              id: data.user.id,
+              name: data.user.nombre,
+              email: data.user.correo,
+              role: data.user.rol,
+              token: data.token
+            };
+          }
+          return null;
         } catch (error) {
-          console.error("Error en autorización:", error);
+          console.error('Error en authorize:', error);
           return null;
         }
       }
@@ -45,24 +43,28 @@ export const authOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        return {
-          ...token,
-          ...user
-        };
+        token.role = user.role;
+        token.accessToken = user.token;
       }
       return token;
     },
     async session({ session, token }) {
-      session.user = token;
+      session.user.role = token.role;
+      session.user.accessToken = token.accessToken;
       return session;
     }
   },
   pages: {
     signIn: '/login',
+    error: '/login',
   },
   session: {
     strategy: "jwt",
+    maxAge: 8 * 60 * 60, // 8 horas
   },
+  secret: process.env.NEXTAUTH_SECRET,
+  // Deshabilitar la redirección automática de NextAuth
+  redirect: false
 };
 
 const handler = NextAuth(authOptions);
