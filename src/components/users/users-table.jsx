@@ -1,7 +1,6 @@
 "use client"
 
-import { useState } from "react"
-import { useSession } from "next-auth/react"
+import { useState, useEffect } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,7 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Edit, Power, MoreHorizontal } from "lucide-react"
 import { useUsers } from "@/hooks/useUsers"
-import userService from "@/services/userService"
+import { userService } from "@/services/userService"
 import { toast } from "sonner"
 import {
   Dialog,
@@ -33,18 +32,22 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { authService } from "@/services/authService"
+import { useRouter } from "next/navigation"
 
 const formSchema = z.object({
   nombre: z.string().min(1, { message: "El nombre es requerido" }),
   correo: z.string().email({ message: "Ingrese un correo válido" }),
   rol: z.string().min(1, { message: "El rol es requerido" }),
   activo: z.boolean(),
-  password: z.string().min(6, { message: "La contraseña debe tener al menos 6 caracteres" }).optional(),
+  password: z.string().min(6, { message: "La contraseña debe tener al menos 6 caracteres" }).optional().or(z.literal("")),
 })
 
-export function UsersTable({ onUserDeleted }) {
-  const { data: usersList, isLoading, isError, mutate } = useUsers()
-  const { status: sessionStatus } = useSession()
+export function UsersTable() {
+  const router = useRouter()
+  const { data: users, isLoading, isError, mutate } = useUsers()
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedUser, setSelectedUser] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -60,7 +63,17 @@ export function UsersTable({ onUserDeleted }) {
     },
   })
 
-  if (sessionStatus === 'loading') {
+  useEffect(() => {
+    const currentUser = authService.getUser()
+    if (!currentUser) {
+      router.push('/login')
+      return
+    }
+    setUser(currentUser)
+    setLoading(false)
+  }, [router])
+
+  if (loading) {
     return (
       <div className="flex items-center justify-center p-4">
         <div className="text-center">Verificando sesión...</div>
@@ -68,7 +81,7 @@ export function UsersTable({ onUserDeleted }) {
     )
   }
 
-  if (sessionStatus === 'unauthenticated') {
+  if (!user) {
     return (
       <div className="flex items-center justify-center p-4">
         <div className="text-center">Por favor, inicie sesión para ver esta información</div>
@@ -94,38 +107,45 @@ export function UsersTable({ onUserDeleted }) {
     )
   }
 
-  const filteredUsers = usersList?.filter(
-    (user) =>
-      user.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.correo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.rol.toLowerCase().includes(searchTerm.toLowerCase()),
-  ) || []
+  const filteredUsers = Array.isArray(users) ? users.filter((user) => {
+    if (!user) return false;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      (user.nombre?.toLowerCase() || '').includes(searchLower) ||
+      (user.correo?.toLowerCase() || '').includes(searchLower) ||
+      (user.rol?.toLowerCase() || '').includes(searchLower)
+    );
+  }) : [];
 
   const handleToggleStatus = async (user) => {
     try {
       await userService.toggleUserStatus(user.id, !user.activo)
-      toast.success(`Usuario ${!user.activo ? 'activado' : 'desactivado'} correctamente`)
-      mutate()
+      await mutate()
     } catch (error) {
-      toast.error(error.message)
+      console.error('Error toggling user status:', error)
     }
   }
 
   const handleUpdateUser = async (values) => {
     try {
-      // Solo enviar la contraseña si se ha proporcionado un valor
       const dataToSubmit = {
-        ...values,
-        password: values.password || undefined
+        nombre: values.nombre,
+        correo: values.correo,
+        rol: values.rol,
+        activo: values.activo,
+      }
+
+      if (values.password && values.password.trim() !== "") {
+        dataToSubmit.password = values.password
       }
       
       await userService.updateUser(selectedUser.id, dataToSubmit)
-      toast.success("Usuario actualizado correctamente")
       setIsEditing(false)
       setSelectedUser(null)
-      mutate()
+      await mutate()
     } catch (error) {
-      toast.error(error.message)
+      console.error('Error updating user:', error)
     }
   }
 
@@ -141,17 +161,20 @@ export function UsersTable({ onUserDeleted }) {
     setIsEditing(true)
   }
 
-
-
   return (
     <div className="space-y-4">
-      <div className="flex items-center">
+      <div className="flex items-center justify-between">
         <Input
           placeholder="Buscar por nombre, email o rol..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"
         />
+        {isLoading && (
+          <div className="text-sm text-muted-foreground">
+            Actualizando datos...
+          </div>
+        )}
       </div>
       <div className="rounded-md border">
         <Table>
@@ -199,11 +222,11 @@ export function UsersTable({ onUserDeleted }) {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => handleEditClick(user)}>
                         <Edit className="mr-2 h-4 w-4" />
-                        <span>Editar</span>
+                        Editar
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleToggleStatus(user)}>
                         <Power className="mr-2 h-4 w-4" />
-                        <span>{user.activo ? "Desactivar" : "Activar"}</span>
+                        {user.activo ? "Desactivar" : "Activar"}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -214,13 +237,12 @@ export function UsersTable({ onUserDeleted }) {
         </Table>
       </div>
 
-      {/* Modal de edición */}
       <Dialog open={isEditing} onOpenChange={setIsEditing}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar Usuario</DialogTitle>
             <DialogDescription>
-              Actualiza los datos del usuario aquí.
+              Modifique los datos del usuario. La contraseña es opcional, déjela en blanco si no desea cambiarla.
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -232,7 +254,7 @@ export function UsersTable({ onUserDeleted }) {
                   <FormItem>
                     <FormLabel>Nombre</FormLabel>
                     <FormControl>
-                      <Input placeholder="Nombre del usuario" {...field} />
+                      <Input {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -243,9 +265,9 @@ export function UsersTable({ onUserDeleted }) {
                 name="correo"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Correo</FormLabel>
+                    <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="correo@ejemplo.com" {...field} />
+                      <Input {...field} type="email" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -274,23 +296,6 @@ export function UsersTable({ onUserDeleted }) {
               />
               <FormField
                 control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nueva Contraseña (opcional)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="password" 
-                        placeholder="Dejar vacío para mantener la contraseña actual" 
-                        {...field} 
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
                 name="activo"
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
@@ -306,13 +311,28 @@ export function UsersTable({ onUserDeleted }) {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nueva Contraseña (opcional)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        {...field} 
+                        type="password" 
+                        placeholder="Dejar en blanco para mantener la contraseña actual" 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit">
-                  Guardar cambios
-                </Button>
+                <Button type="submit">Guardar cambios</Button>
               </DialogFooter>
             </form>
           </Form>
@@ -321,4 +341,3 @@ export function UsersTable({ onUserDeleted }) {
     </div>
   )
 }
-

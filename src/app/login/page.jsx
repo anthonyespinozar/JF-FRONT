@@ -10,7 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Bus, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { signIn } from "next-auth/react";
+import { authService } from "@/services/authService";
 
 const formSchema = z.object({
   correo: z
@@ -40,21 +40,12 @@ export default function LoginPage() {
     setIsLoading(true);
     setErrorMessage("");
     try {
-      const result = await signIn("credentials", {
-        redirect: false,
-        correo: values.correo,
-        password: values.password,
-      });
-
-      if (result?.error) {
-        throw new Error(result.error);
-      }
-
-      if (result?.ok) {
+      const result = await authService.login(values);
+      
+      if (result.token && result.user) {
         toast.success("Inicio de sesión exitoso");
         // Redirigir según el rol del usuario
-        const userRole = result?.user?.role;
-        if (userRole === 'CHOFER') {
+        if (result.user.rol === 'CHOFER') {
           router.push('/chofer/dashboard');
         } else {
           router.push('/');

@@ -30,7 +30,7 @@ const formSchema = z.object({
 
 export default function MaterialsPage() {
   const [isCreating, setIsCreating] = useState(false);
-  const { mutate, materials } = useMaterials();
+  const { data: materials, isLoading, isError, mutate } = useMaterials()
 
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -48,7 +48,8 @@ export default function MaterialsPage() {
       toast.success("Material creado correctamente");
       setIsCreating(false);
       form.reset();
-      mutate([...materials, newMaterial], false);
+      // Actualizar la lista de materiales inmediatamente
+      await mutate()
     } catch (error) {
       toast.error(error.message);
     }
@@ -148,7 +149,7 @@ export default function MaterialsPage() {
           </DialogContent>
         </Dialog>
       </div>
-      <MaterialsTable onMaterialDeleted={() => mutate()} />
+      <MaterialsTable />
     </div>
   )
 }

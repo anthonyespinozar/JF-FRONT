@@ -1,26 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { authService } from "@/services/authService";
 import { unitService } from "@/services/unitService";
 import { maintenanceService } from "@/services/maintenanceService";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table } from "@/components/ui/table";
+import { useRouter } from "next/navigation";
 
 export default function DriverDashboard() {
-  const { data: session } = useSession();
+  const router = useRouter();
+  const [user, setUser] = useState(null);
   const [unit, setUnit] = useState(null);
   const [parts, setParts] = useState([]);
   const [maintenances, setMaintenances] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const currentUser = authService.getUser();
+    if (!currentUser) {
+      router.push('/login');
+      return;
+    }
+    setUser(currentUser);
+  }, [router]);
+
+  useEffect(() => {
     async function loadDriverData() {
       try {
+        if (!user?.id) return;
+
         // Cargar unidad asignada
-        const unitData = await unitService.getDriverUnit(session.user.id);
+        const unitData = await unitService.getDriverUnit(user.id);
         setUnit(unitData);
 
         // Cargar partes de la unidad
@@ -37,13 +50,17 @@ export default function DriverDashboard() {
       }
     }
 
-    if (session?.user?.id) {
+    if (user?.id) {
       loadDriverData();
     }
-  }, [session]);
+  }, [user]);
 
   if (loading) {
-    return <div>Cargando...</div>;
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
   }
 
   return (
@@ -81,7 +98,7 @@ export default function DriverDashboard() {
               <p className="text-sm text-muted-foreground">
                 Último mantenimiento: {part.ultimo_mantenimiento_km} km
               </p>
-              <Alert className={part.estado === 'ALERTA' ? 'bg-red-100' : 'bg-green-100'}>
+              <Alert variant={part.estado === 'ALERTA' ? 'destructive' : 'success'}>
                 <AlertTitle>Estado: {part.estado}</AlertTitle>
                 <AlertDescription>
                   {part.estado === 'ALERTA' ? 'Requiere revisión' : 'En buen estado'}
@@ -100,22 +117,26 @@ export default function DriverDashboard() {
             <tr>
               <th>Fecha</th>
               <th>Tipo</th>
+              <th>Descripción</th>
               <th>Kilometraje</th>
               <th>Estado</th>
-              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {maintenances.map((maintenance) => (
               <tr key={maintenance.id}>
-                <td>{new Date(maintenance.fecha_solicitud).toLocaleDateString()}</td>
+                <td>{new Date(maintenance.fecha).toLocaleDateString()}</td>
                 <td>{maintenance.tipo}</td>
-                <td>{maintenance.kilometraje_actual} km</td>
-                <td>{maintenance.estado}</td>
+                <td>{maintenance.descripcion}</td>
+                <td>{maintenance.kilometraje} km</td>
                 <td>
-                  <Button variant="ghost" size="sm">
-                    Ver detalles
-                  </Button>
+                  <span className={`px-2 py-1 rounded-full text-xs ${
+                    maintenance.estado === 'COMPLETADO' 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    {maintenance.estado}
+                  </span>
                 </td>
               </tr>
             ))}

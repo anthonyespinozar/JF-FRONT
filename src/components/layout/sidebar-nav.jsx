@@ -3,11 +3,12 @@
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { BarChart3, Bus, Wrench, Package, FileBarChart, Users, LogOut, Settings, Building2, ChevronLeft } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarRail } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { UserAvatar } from "@/components/ui/user-avatar"
-import { signOut, useSession } from "next-auth/react"
+import { authService } from "@/services/authService"
+import { cn } from "@/lib/utils"
 
 const adminNavItems = [
   { title: "Dashboard", href: "/", icon: BarChart3 },
@@ -31,10 +32,21 @@ export function SidebarNav() {
   const pathname = usePathname()
   const router = useRouter()
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const { data: session, status } = useSession()
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const currentUser = authService.getUser()
+    if (!currentUser) {
+      router.push('/login')
+      return
+    }
+    setUser(currentUser)
+    setLoading(false)
+  }, [router])
 
   // Si está cargando, muestra un skeleton
-  if (status === "loading") {
+  if (loading) {
     return (
       <div className="h-screen w-[280px] bg-sidebar animate-pulse">
         {/* Puedes agregar un skeleton aquí */}
@@ -42,29 +54,46 @@ export function SidebarNav() {
     )
   }
 
-  // Si no hay sesión, no mostrar el sidebar
-  if (!session) {
+  // Si no hay usuario, no mostrar el sidebar
+  if (!user) {
     return null
   }
 
   const handleLogout = async () => {
     try {
-      await signOut({ redirect: true, callbackUrl: '/login' })
+      authService.logout()
+      router.push('/login')
     } catch (error) {
       console.error('Error al cerrar sesión:', error)
     }
   }
 
   // Determinar qué items mostrar según el rol
-  const navItems = session.user.role === 'CHOFER' ? choferNavItems : adminNavItems
+  const navItems = user.rol === 'CHOFER' ? choferNavItems : adminNavItems
 
   return (
     <div className="relative">
-      <Sidebar className={`h-screen bg-sidebar transition-all duration-300 ${isCollapsed ? 'w-[64px]' : 'w-[280px]'}`}>
+      <Sidebar className={cn(
+        "h-screen bg-sidebar transition-all duration-300 ease-in-out",
+        isCollapsed ? "w-[80px]" : "w-[280px]"
+      )}>
         <SidebarHeader className="bg-sidebar border-none">
-          <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'px-4'} py-3`}>
-            <Bus className="h-5 w-5 text-sidebar-primary shrink-0" />
-            {!isCollapsed && <div className="ml-3 font-semibold text-lg text-sidebar-foreground">FleetMaster</div>}
+          <div className={cn(
+            "flex items-center py-3",
+            isCollapsed ? "justify-center" : "px-4"
+          )}>
+            <Bus className={cn(
+              "text-sidebar-primary shrink-0",
+              isCollapsed ? "h-6 w-6" : "h-5 w-5"
+            )} />
+            {!isCollapsed && (
+              <div className="ml-3">
+                <div className="font-semibold text-lg text-sidebar-foreground">FleetMaster</div>
+                <div className="text-xs text-sidebar-foreground/70">
+                  {user.rol === 'ADMIN' ? 'Administrador' : 'Chofer'}
+                </div>
+              </div>
+            )}
           </div>
         </SidebarHeader>
         <SidebarContent className="py-1">
@@ -80,13 +109,24 @@ export function SidebarNav() {
                   <SidebarMenuItem key={item.title}>
                     <Link 
                       href={item.href} 
-                      className={`flex items-center w-full px-4 py-2 rounded-lg transition-all duration-200 hover:bg-sidebar-accent/50 ${
-                        pathname === item.href ? 'bg-sidebar-accent text-sidebar-primary' : 'text-sidebar-foreground'
-                      } ${isCollapsed ? 'justify-center' : 'gap-3'}`} 
+                      className={cn(
+                        "flex items-center w-full rounded-lg transition-all duration-200",
+                        "hover:bg-sidebar-accent/50",
+                        pathname === item.href ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground",
+                        isCollapsed ? "justify-center p-3" : "px-4 py-2 gap-3"
+                      )}
                       title={isCollapsed ? item.title : undefined}
                     >
-                      <item.icon className={`h-4 w-4 ${pathname === item.href ? 'text-sidebar-primary' : ''}`} />
-                      {!isCollapsed && <span className="text-sm">{item.title}</span>}
+                      <item.icon className={cn(
+                        "transition-transform duration-200",
+                        pathname === item.href ? "text-sidebar-primary" : "",
+                        isCollapsed ? "h-6 w-6" : "h-4 w-4"
+                      )} />
+                      {!isCollapsed && (
+                        <span className="text-sm transition-opacity duration-200">
+                          {item.title}
+                        </span>
+                      )}
                     </Link>
                   </SidebarMenuItem>
                 ))}
@@ -96,20 +136,26 @@ export function SidebarNav() {
         </SidebarContent>
         <div className="relative">
           <SidebarFooter className="bg-sidebar-accent/10 border-none">
-            <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3`}>
+            <div className={cn(
+              "flex items-center py-3",
+              isCollapsed ? "justify-center" : "gap-3 px-4"
+            )}>
               <UserAvatar 
-                user={session.user}
+                user={user}
                 variant="sidebar"
-                className="h-8 w-8 border border-sidebar-border/50 shrink-0"
+                className={cn(
+                  "border border-sidebar-border/50 shrink-0",
+                  isCollapsed ? "h-10 w-10" : "h-8 w-8"
+                )}
               />
               {!isCollapsed && (
                 <>
                   <div className="flex-1">
                     <p className="text-sm font-medium leading-none text-sidebar-foreground">
-                      {session.user.nombre}
+                      {user.nombre}
                     </p>
                     <p className="text-xs text-sidebar-foreground/70 mt-1">
-                      {session.user.role}
+                      {user.rol}
                     </p>
                   </div>
                   <Button 
@@ -119,7 +165,10 @@ export function SidebarNav() {
                     title="Cerrar sesión"
                     onClick={handleLogout}
                   >
-                    <LogOut className="h-4 w-4 text-sidebar-foreground" />
+                    <LogOut className={cn(
+                      "text-sidebar-foreground",
+                      isCollapsed ? "h-5 w-5" : "h-4 w-4"
+                    )} />
                   </Button>
                 </>
               )}
@@ -128,7 +177,12 @@ export function SidebarNav() {
           <Button
             variant="ghost"
             size="icon"
-            className={`absolute -right-4 top-1/2 -translate-y-1/2 z-50 h-8 w-8 rounded-full bg-sidebar-accent hover:bg-sidebar-accent/80 transition-all duration-300 ${isCollapsed ? 'rotate-180' : ''}`}
+            className={cn(
+              "absolute -right-4 top-1/2 -translate-y-1/2 z-50 h-8 w-8 rounded-full",
+              "bg-sidebar-accent hover:bg-sidebar-accent/80 transition-all duration-300",
+              isCollapsed ? "rotate-180" : "",
+              "shadow-md hover:shadow-lg"
+            )}
             onClick={() => setIsCollapsed(!isCollapsed)}
             title={isCollapsed ? "Expandir" : "Colapsar"}
           >

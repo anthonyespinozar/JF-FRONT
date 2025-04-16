@@ -2,18 +2,36 @@ import environment from '@/config/environment';
 
 export const authService = {
   setToken(token) {
+    if (!token) return;
+    // Guardar la fecha de expiración (8 horas desde ahora)
+    const expiresAt = new Date().getTime() + (8 * 60 * 60 * 1000);
     localStorage.setItem('token', token);
+    localStorage.setItem('token_expires_at', expiresAt.toString());
   },
 
   getToken() {
-    return localStorage.getItem('token');
+    const token = localStorage.getItem('token');
+    const expiresAt = localStorage.getItem('token_expires_at');
+    
+    if (!token || !expiresAt) return null;
+    
+    // Verificar si el token ha expirado
+    const now = new Date().getTime();
+    if (now > parseInt(expiresAt)) {
+      this.removeToken();
+      return null;
+    }
+    
+    return token;
   },
 
   removeToken() {
     localStorage.removeItem('token');
+    localStorage.removeItem('token_expires_at');
   },
 
   setUser(user) {
+    if (!user) return;
     localStorage.setItem('user', JSON.stringify(user));
   },
 
@@ -24,6 +42,10 @@ export const authService = {
 
   removeUser() {
     localStorage.removeItem('user');
+  },
+
+  isAuthenticated() {
+    return !!this.getToken() && !!this.getUser();
   },
 
   async login(credentials) {
@@ -64,13 +86,10 @@ export const authService = {
     }
   },
 
-  isAuthenticated() {
-    return !!this.getToken() && !!this.getUser();
-  },
-
   logout() {
     this.removeToken();
     this.removeUser();
+    window.location.href = '/login';
   }
 };
 

@@ -1,7 +1,6 @@
 "use client"
 
-import { useState } from "react"
-import { useSession } from "next-auth/react"
+import { useState, useEffect } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { Edit, Trash2, MoreHorizontal } from "lucide-react"
+import { Edit, Trash2, MoreHorizontal, Package } from "lucide-react"
 import { useMaterials } from "@/hooks/useMaterials"
 import { materialService } from "@/services/materialService"
 import { toast } from "sonner"
@@ -30,20 +29,25 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { authService } from "@/services/authService"
+import { useRouter } from "next/navigation"
 
 const formSchema = z.object({
   nombre: z.string().min(1, { message: "El nombre es requerido" }),
   descripcion: z.string().min(1, { message: "La descripción es requerida" }),
   stock: z.number().min(0, { message: "El stock no puede ser negativo" }),
-  precio: z.number().min(0, { message: "El precio no puede ser negativo" }),
+  precio: z.string().min(1, { message: "El precio es requerido" }),
 })
 
-export function MaterialsTable({ onMaterialDeleted }) {
-  const { materials, isLoading, isError, mutate } = useMaterials()
-  const { status: sessionStatus } = useSession()
+export function MaterialsTable() {
+  const router = useRouter()
+  const { data: materials, isLoading, isError, mutate } = useMaterials()
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedMaterial, setSelectedMaterial] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -51,31 +55,93 @@ export function MaterialsTable({ onMaterialDeleted }) {
       nombre: "",
       descripcion: "",
       stock: 0,
-      precio: 0,
+      precio: "0.00",
     },
   })
 
-  if (sessionStatus === 'loading') {
-    return <div>Cargando...</div>
+  useEffect(() => {
+    const currentUser = authService.getUser()
+    if (!currentUser) {
+      router.push('/login')
+      return
+    }
+    setUser(currentUser)
+    setLoading(false)
+  }, [router])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <div className="text-center">Verificando sesión...</div>
+      </div>
+    )
   }
 
-  if (sessionStatus === 'unauthenticated') {
-    return <div>No autorizado</div>
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <div className="text-center">Por favor, inicie sesión para ver esta información</div>
+      </div>
+    )
   }
 
   if (isLoading) {
-    return <div>Cargando materiales...</div>
+    return (
+      <div className="flex items-center justify-center p-4">
+        <div className="text-center">Cargando materiales...</div>
+      </div>
+    )
   }
 
   if (isError) {
-    return <div>Error al cargar los materiales</div>
+    return (
+      <div className="flex items-center justify-center p-4">
+        <div className="text-center text-red-500">
+          Error al cargar los materiales. Por favor, intente nuevamente.
+        </div>
+      </div>
+    )
   }
 
-  const filteredMaterials = materials.filter(
-    (material) =>
-      material.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      material.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredMaterials = materials?.filter((material) => {
+    if (!material) return false;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      (material.nombre?.toLowerCase() || '').includes(searchLower) ||
+      (material.descripcion?.toLowerCase() || '').includes(searchLower) ||
+      (material.precio?.toString() || '').toLowerCase().includes(searchLower)
+    );
+  }) || [];
+
+  const handleUpdateMaterial = async (values) => {
+    try {
+      const dataToSubmit = {
+        ...values,
+        precio: values.precio // Ya viene como string
+      }
+      
+      const response = await materialService.updateMaterial(selectedMaterial.id, dataToSubmit)
+      toast.success(response.message || "Material actualizado correctamente")
+      setIsEditing(false)
+      setSelectedMaterial(null)
+      await mutate()
+    } catch (error) {
+      toast.error(error.message)
+    }
+  }
+
+  const handleDeleteMaterial = async () => {
+    try {
+      const response = await materialService.deleteMaterial(selectedMaterial.id)
+      toast.success(response.message || "Material eliminado correctamente")
+      setIsDeleting(false)
+      setSelectedMaterial(null)
+      await mutate()
+    } catch (error) {
+      toast.error(error.message)
+    }
+  }
 
   const handleEditClick = (material) => {
     setSelectedMaterial(material)
@@ -83,38 +149,21 @@ export function MaterialsTable({ onMaterialDeleted }) {
       nombre: material.nombre,
       descripcion: material.descripcion,
       stock: material.stock,
-      precio: material.precio,
+      precio: material.precio.toString(),
     })
     setIsEditing(true)
   }
 
-  const handleUpdateMaterial = async (values) => {
-    try {
-      await materialService.updateMaterial(selectedMaterial.id, values)
-      toast.success("Material actualizado correctamente")
-      setIsEditing(false)
-      setSelectedMaterial(null)
-      mutate()
-    } catch (error) {
-      toast.error(error.message)
-    }
-  }
-
-  const handleDeleteMaterial = async (materialId) => {
-    try {
-      await materialService.deleteMaterial(materialId)
-      toast.success("Material eliminado correctamente")
-      mutate(materials.filter(material => material.id !== materialId), false)
-    } catch (error) {
-      toast.error(error.message)
-    }
+  const handleDeleteClick = (material) => {
+    setSelectedMaterial(material)
+    setIsDeleting(true)
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center">
         <Input
-          placeholder="Buscar por nombre o descripción..."
+          placeholder="Buscar por nombre, descripción o precio..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"
@@ -124,7 +173,7 @@ export function MaterialsTable({ onMaterialDeleted }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Nombre</TableHead>
+              <TableHead>Material</TableHead>
               <TableHead>Descripción</TableHead>
               <TableHead>Stock</TableHead>
               <TableHead>Precio</TableHead>
@@ -134,14 +183,19 @@ export function MaterialsTable({ onMaterialDeleted }) {
           <TableBody>
             {filteredMaterials.map((material) => (
               <TableRow key={material.id}>
-                <TableCell>{material.nombre}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">{material.nombre}</span>
+                  </div>
+                </TableCell>
                 <TableCell>{material.descripcion}</TableCell>
                 <TableCell>
-                  <Badge variant={material.stock > 0 ? "default" : "destructive"}>
+                  <Badge variant={material.stock <= 5 ? "destructive" : "default"}>
                     {material.stock}
                   </Badge>
                 </TableCell>
-                <TableCell>${material.precio }</TableCell>
+                <TableCell>${parseFloat(material.precio).toFixed(2)}</TableCell>
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -155,11 +209,11 @@ export function MaterialsTable({ onMaterialDeleted }) {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => handleEditClick(material)}>
                         <Edit className="mr-2 h-4 w-4" />
-                        <span>Editar</span>
+                        Editar
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDeleteMaterial(material.id)}>
+                      <DropdownMenuItem onClick={() => handleDeleteClick(material)}>
                         <Trash2 className="mr-2 h-4 w-4" />
-                        <span>Eliminar</span>
+                        Eliminar
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -170,13 +224,12 @@ export function MaterialsTable({ onMaterialDeleted }) {
         </Table>
       </div>
 
-      {/* Modal de edición */}
       <Dialog open={isEditing} onOpenChange={setIsEditing}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar Material</DialogTitle>
             <DialogDescription>
-              Actualiza los datos del material aquí.
+              Modifique los datos del material.
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -188,7 +241,7 @@ export function MaterialsTable({ onMaterialDeleted }) {
                   <FormItem>
                     <FormLabel>Nombre</FormLabel>
                     <FormControl>
-                      <Input placeholder="Nombre del material" {...field} />
+                      <Input {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -201,7 +254,7 @@ export function MaterialsTable({ onMaterialDeleted }) {
                   <FormItem>
                     <FormLabel>Descripción</FormLabel>
                     <FormControl>
-                      <Input placeholder="Descripción del material" {...field} />
+                      <Input {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -216,9 +269,9 @@ export function MaterialsTable({ onMaterialDeleted }) {
                     <FormControl>
                       <Input 
                         type="number" 
-                        placeholder="Cantidad en stock" 
+                        min="0"
                         {...field} 
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        onChange={(e) => field.onChange(parseInt(e.target.value))}
                       />
                     </FormControl>
                     <FormMessage />
@@ -233,10 +286,19 @@ export function MaterialsTable({ onMaterialDeleted }) {
                     <FormLabel>Precio</FormLabel>
                     <FormControl>
                       <Input 
-                        type="number" 
-                        placeholder="Precio del material" 
-                        {...field} 
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        type="text"
+                        {...field}
+                        onChange={(e) => {
+                          // Validar que solo contenga números y un punto decimal
+                          const value = e.target.value.replace(/[^0-9.]/g, '');
+                          // Asegurar que solo haya un punto decimal
+                          const parts = value.split('.');
+                          if (parts.length > 2) {
+                            field.onChange(parts[0] + '.' + parts.slice(1).join(''));
+                          } else {
+                            field.onChange(value);
+                          }
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -247,15 +309,31 @@ export function MaterialsTable({ onMaterialDeleted }) {
                 <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit">
-                  Guardar cambios
-                </Button>
+                <Button type="submit">Guardar cambios</Button>
               </DialogFooter>
             </form>
           </Form>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={isDeleting} onOpenChange={setIsDeleting}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Está seguro?</DialogTitle>
+            <DialogDescription>
+              Esta acción no se puede deshacer. Se eliminará permanentemente el material.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsDeleting(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleDeleteMaterial}>
+              Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-

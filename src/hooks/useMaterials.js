@@ -11,11 +11,18 @@ export function useMaterials() {
     try {
       setIsLoading(true)
       const data = await materialService.getMaterials()
-      setMaterials(data)
-      setIsError(false)
+      if (Array.isArray(data)) {
+        setMaterials(data)
+        setIsError(false)
+      } else {
+        setMaterials([])
+        setIsError(true)
+        toast.error('Error: La respuesta no es un array válido')
+      }
     } catch (error) {
       console.error("Error fetching materials:", error)
       toast.error(error.message)
+      setMaterials([])
       setIsError(true)
     } finally {
       setIsLoading(false)
@@ -31,7 +38,7 @@ export function useMaterials() {
   }
 
   return {
-    materials,
+    data: materials,
     isLoading,
     isError,
     mutate

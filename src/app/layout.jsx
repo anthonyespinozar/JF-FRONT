@@ -1,8 +1,6 @@
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { SidebarNav } from "@/components/layout/sidebar-nav";
-import { Header } from "@/components/layout/header";
-import Providers from "@/components/providers/Providers";
+import { Providers } from "@/components/providers/Providers";
 import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -24,16 +22,7 @@ export default function RootLayout({ children }) {
     <html lang="es-PE" suppressHydrationWarning>
       <body className={`${inter.className}`}>
         <Providers>
-          <div className="fixed inset-0 flex">
-            <SidebarNav />
-            <div className="flex-1 flex flex-col min-h-screen overflow-auto">
-              <Header className="sticky top-0 z-10 border-b bg-background" />
-              <main className="flex-grow p-6">{children}</main>
-              <footer className="border-t py-4 text-center text-sm text-muted-foreground">
-                <p>© {new Date().getFullYear()} FleetMaster. Todos los derechos reservados.</p>
-              </footer>
-            </div>
-          </div>
+          {children}
         </Providers>
         <Toaster position="top-center" richColors />
       </body>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import userService from '@/services/userService';
+import { userService } from '@/services/userService';
 import { toast } from 'sonner';
 
 export function useUsers() {
@@ -11,10 +11,17 @@ export function useUsers() {
     try {
       setIsLoading(true);
       const data = await userService.getUsers();
-      setUsers(data);
-      setIsError(false);
+      if (Array.isArray(data)) {
+        setUsers(data);
+        setIsError(false);
+      } else {
+        setUsers([]);
+        setIsError(true);
+        toast.error('Error: La respuesta no es un array válido');
+      }
     } catch (error) {
       console.error('Error fetching users:', error);
+      setUsers([]);
       setIsError(true);
       toast.error('Error al cargar los usuarios');
     } finally {
@@ -26,8 +33,16 @@ export function useUsers() {
     fetchUsers();
   }, []);
 
-  const mutate = () => {
-    fetchUsers();
+  const mutate = async () => {
+    try {
+      setIsLoading(true);
+      await fetchUsers();
+    } catch (error) {
+      console.error('Error in mutate:', error);
+      toast.error('Error al actualizar la lista de usuarios');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return {
@@ -37,3 +52,4 @@ export function useUsers() {
     mutate
   };
 }
+

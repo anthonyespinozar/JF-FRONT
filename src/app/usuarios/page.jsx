@@ -17,18 +17,42 @@ import {
 import { Input } from "@/components/ui/input"
 import { useUsers } from "@/hooks/useUsers"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+
+const formSchema = z.object({
+  nombre: z.string().min(1, { message: "El nombre es requerido" }),
+  correo: z.string().email({ message: "Ingrese un correo válido" }),
+  password: z.string().min(6, { message: "La contraseña debe tener al menos 6 caracteres" }),
+  rol: z.string().min(1, { message: "El rol es requerido" }),
+  activo: z.boolean().default(true),
+})
 
 export default function UsersPage() {
   const [isCreating, setIsCreating] = useState(false);
-  const { mutate, users } = useUsers();
+  const { data: users, isLoading, isError, mutate } = useUsers()
 
-  const handleCreateUser = async (userData) => {
+  const form = useForm({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      nombre: "",
+      correo: "",
+      password: "",
+      rol: "CHOFER",
+      activo: true,
+    },
+  });
+
+  const handleCreateUser = async (values) => {
     try {
-      const newUser = await userService.createUser(userData);
+      const newUser = await userService.createUser(values);
       toast.success("Usuario creado correctamente");
       setIsCreating(false);
+      form.reset();
       // Actualizar la lista de usuarios inmediatamente
-      mutate([...users, newUser], false);
+      await mutate()
     } catch (error) {
       toast.error(error.message);
     }
@@ -51,92 +75,83 @@ export default function UsersPage() {
                 Ingresa los datos del nuevo usuario.
               </DialogDescription>
             </DialogHeader>
-            <CreateUserForm 
-              onSubmit={handleCreateUser}
-              onCancel={() => setIsCreating(false)}
-            />
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(handleCreateUser)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="nombre"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nombre</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Nombre del usuario" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="correo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Correo</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="Correo del usuario" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contraseña</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="Contraseña" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="rol"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Rol</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccione un rol" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="ADMIN">Administrador</SelectItem>
+                          <SelectItem value="CHOFER">Chofer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setIsCreating(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit">
+                    Crear Usuario
+                  </Button>
+                </div>
+              </form>
+            </Form>
           </DialogContent>
         </Dialog>
       </div>
-      <UsersTable onUserDeleted={() => mutate()} />
+      <UsersTable />
     </div>
   )
-}
-
-function CreateUserForm({ onSubmit, onCancel }) {
-  const [formData, setFormData] = useState({
-    nombre: "",
-    correo: "",
-    password: "",
-    rol: "CHOFER",
-    activo: true
-  });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit(formData);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid gap-4">
-        <div className="grid grid-cols-4 items-center gap-4">
-          <label htmlFor="nombre">Nombre</label>
-          <Input
-            id="nombre"
-            value={formData.nombre}
-            onChange={(e) => setFormData(prev => ({ ...prev, nombre: e.target.value }))}
-            className="col-span-3"
-            required
-          />
-        </div>
-        <div className="grid grid-cols-4 items-center gap-4">
-          <label htmlFor="correo">Correo</label>
-          <Input
-            id="correo"
-            type="email"
-            value={formData.correo}
-            onChange={(e) => setFormData(prev => ({ ...prev, correo: e.target.value }))}
-            className="col-span-3"
-            required
-          />
-        </div>
-        <div className="grid grid-cols-4 items-center gap-4">
-          <label htmlFor="password">Contraseña</label>
-          <Input
-            id="password"
-            type="password"
-            value={formData.password}
-            onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-            className="col-span-3"
-            required
-          />
-        </div>
-        <div className="grid grid-cols-4 items-center gap-4">
-          <label htmlFor="rol">Rol</label>
-          <Select
-            value={formData.rol}
-            onValueChange={(value) => setFormData(prev => ({ ...prev, rol: value }))}
-          >
-            <SelectTrigger className="col-span-3">
-              <SelectValue placeholder="Seleccione un rol" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ADMIN">Administrador</SelectItem>
-              <SelectItem value="CHOFER">Chofer</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button type="submit">
-          Crear Usuario
-        </Button>
-      </div>
-    </form>
-  );
 }
 
