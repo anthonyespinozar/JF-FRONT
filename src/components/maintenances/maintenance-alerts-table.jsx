@@ -8,87 +8,79 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { AlertCircle, AlertTriangle, CheckCircle, Calendar, Wrench } from "lucide-react"
-import { vehicleParts, remainingLifePercentage, getPartStatus, needsMaintenance } from "@/lib/maintenance-alerts"
+import { useAlerts } from "@/hooks/useAlerts"
+import { toast } from "sonner"
 
 export function MaintenanceAlertsTable() {
+  const { data: alerts, isLoading, isError, mutate, resolveAlert } = useAlerts()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [unitFilter, setUnitFilter] = useState("all")
 
   // Obtener unidades únicas para el filtro
-  const uniqueUnits = Array.from(new Set(vehicleParts.map((part) => part.unitPlate)))
+  const uniqueUnits = Array.from(new Set(alerts?.map((alert) => alert.placa) || []))
 
-  const filteredParts = vehicleParts.filter((part) => {
-    const matchesSearch =
-      part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      part.unitPlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      part.description.toLowerCase().includes(searchTerm.toLowerCase())
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <div className="text-center">Cargando alertas...</div>
+      </div>
+    )
+  }
 
-    const status = getPartStatus(part)
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "critical" && status === "critical") ||
-      (statusFilter === "warning" && status === "warning") ||
-      (statusFilter === "normal" && status === "normal")
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <div className="text-center text-red-500">
+          Error al cargar las alertas. Por favor, intente nuevamente.
+        </div>
+      </div>
+    )
+  }
 
-    const matchesUnit = unitFilter === "all" || part.unitPlate === unitFilter
+  const filteredAlerts = alerts?.filter((alert) => {
+    if (!alert) return false;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      (alert.placa?.toLowerCase() || '').includes(searchLower) ||
+      (alert.parte?.toLowerCase() || '').includes(searchLower) ||
+      (alert.mensaje?.toLowerCase() || '').includes(searchLower)
+    );
+  }) || [];
 
-    return matchesSearch && matchesStatus && matchesUnit
-  })
-
-  // Ordenar por estado (crítico primero, luego advertencia, luego normal)
-  const sortedParts = [...filteredParts].sort((a, b) => {
-    const statusA = getPartStatus(a)
-    const statusB = getPartStatus(b)
-
-    if (statusA === "critical" && statusB !== "critical") return -1
-    if (statusA !== "critical" && statusB === "critical") return 1
-    if (statusA === "warning" && statusB === "normal") return -1
-    if (statusA === "normal" && statusB === "warning") return 1
-
-    return 0
-  })
-
-  const getStatusBadge = (part) => {
-    const status = getPartStatus(part)
-    const percentage = remainingLifePercentage(part)
-
-    if (status === "critical") {
+  const getStatusBadge = (status) => {
+    if (status === "ACTIVO") {
       return (
         <Badge variant="destructive" className="flex items-center gap-1">
           <AlertCircle className="h-3 w-3" />
-          <span>Crítico ({percentage.toFixed(0)}%)</span>
-        </Badge>
-      )
-    } else if (status === "warning") {
-      return (
-        <Badge variant="outline" className="flex items-center gap-1 border-yellow-500 text-yellow-500">
-          <AlertTriangle className="h-3 w-3" />
-          <span>Advertencia ({percentage.toFixed(0)}%)</span>
+          <span>Activo</span>
         </Badge>
       )
     } else {
       return (
         <Badge variant="outline" className="flex items-center gap-1 border-green-500 text-green-500">
           <CheckCircle className="h-3 w-3" />
-          <span>Normal ({percentage.toFixed(0)}%)</span>
+          <span>Resuelto</span>
         </Badge>
       )
     }
   }
 
-  const getProgressColor = (part) => {
-    const status = getPartStatus(part)
-    if (status === "critical") return "bg-red-500"
-    if (status === "warning") return "bg-yellow-500"
-    return "bg-green-500"
+  const handleResolveAlert = async (alertId) => {
+    try {
+      await resolveAlert(alertId)
+      toast.success("Alerta resuelta correctamente")
+    } catch (error) {
+      toast.error(error.message)
+    }
   }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-4">
         <Input
-          placeholder="Buscar por nombre, unidad o descripción..."
+          placeholder="Buscar por placa, parte o mensaje..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"
@@ -100,9 +92,8 @@ export function MaintenanceAlertsTable() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los estados</SelectItem>
-              <SelectItem value="critical">Crítico</SelectItem>
-              <SelectItem value="warning">Advertencia</SelectItem>
-              <SelectItem value="normal">Normal</SelectItem>
+              <SelectItem value="ACTIVO">Activo</SelectItem>
+              <SelectItem value="RESUELTO">Resuelto</SelectItem>
             </SelectContent>
           </Select>
           <Select value={unitFilter} onValueChange={setUnitFilter}>
@@ -124,43 +115,37 @@ export function MaintenanceAlertsTable() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Parte</TableHead>
               <TableHead>Unidad</TableHead>
-              <TableHead>Intervalo</TableHead>
-              <TableHead>Último Mantenimiento</TableHead>
-              <TableHead>Km Actual</TableHead>
+              <TableHead>Parte</TableHead>
+              <TableHead>Mensaje</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Vida Útil</TableHead>
               <TableHead className="w-[120px]">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedParts.map((part) => (
-              <TableRow key={part.id} className={needsMaintenance(part) ? "bg-red-50 dark:bg-red-950/20" : ""}>
-                <TableCell className="font-medium">{part.name}</TableCell>
-                <TableCell>{part.unitPlate}</TableCell>
-                <TableCell>{part.maintenanceInterval.toLocaleString()} km</TableCell>
-                <TableCell>{part.lastMaintenanceKm.toLocaleString()} km</TableCell>
-                <TableCell>{part.unitCurrentKm.toLocaleString()} km</TableCell>
-                <TableCell>{getStatusBadge(part)}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Progress
-                      value={remainingLifePercentage(part)}
-                      className="h-2"
-                      indicatorClassName={getProgressColor(part)}
-                    />
-                    <span className="text-xs w-8">{remainingLifePercentage(part).toFixed(0)}%</span>
-                  </div>
-                </TableCell>
+            {filteredAlerts.map((alert) => (
+              <TableRow key={alert.id}>
+                <TableCell className="font-medium">{alert.placa}</TableCell>
+                <TableCell>{alert.parte}</TableCell>
+                <TableCell>{alert.mensaje}</TableCell>
+                <TableCell>{getStatusBadge(alert.estado)}</TableCell>
                 <TableCell>
                   <div className="flex space-x-2">
-                    <Button variant="outline" size="icon" title="Programar mantenimiento">
-                      <Calendar className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="icon" title="Registrar mantenimiento">
-                      <Wrench className="h-4 w-4" />
-                    </Button>
+                    {alert.estado === "ACTIVO" && (
+                      <>
+                        <Button variant="outline" size="icon" title="Programar mantenimiento">
+                          <Calendar className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="icon" 
+                          title="Resolver alerta"
+                          onClick={() => handleResolveAlert(alert.id)}
+                        >
+                          <Wrench className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

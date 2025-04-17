@@ -4,101 +4,121 @@ import { useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { CheckCircle, Edit, Eye } from "lucide-react"
+import { Edit, Trash2, MoreHorizontal, Wrench } from "lucide-react"
+import { useMaintenances } from "@/hooks/useMaintenances"
+import { maintenanceService } from "@/services/maintenanceService"
+import { toast } from "sonner"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-const maintenances = [
-  {
-    id: "1",
-    unit: "ABC-123",
-    type: "Preventivo",
-    status: "Pendiente",
-    requestDate: "12/03/2024",
-    observations: "Cambio de aceite y filtros",
-  },
-  {
-    id: "2",
-    unit: "XYZ-789",
-    type: "Correctivo",
-    status: "Realizado",
-    requestDate: "10/03/2024",
-    observations: "Reparación de frenos",
-  },
-  {
-    id: "3",
-    unit: "DEF-456",
-    type: "Preventivo",
-    status: "Pendiente",
-    requestDate: "15/03/2024",
-    observations: "Revisión de sistema eléctrico",
-  },
-  {
-    id: "4",
-    unit: "GHI-101",
-    type: "Correctivo",
-    status: "Realizado",
-    requestDate: "08/03/2024",
-    observations: "Cambio de neumáticos",
-  },
-  {
-    id: "5",
-    unit: "JKL-202",
-    type: "Preventivo",
-    status: "Pendiente",
-    requestDate: "18/03/2024",
-    observations: "Mantenimiento de aire acondicionado",
-  },
-]
+const formSchema = z.object({
+  estado: z.enum(["pendiente", "en_proceso", "completado"], { message: "El estado es requerido" }),
+})
 
 export function MaintenancesTable() {
+  const { data: maintenances, isLoading, isError, mutate } = useMaintenances()
   const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [typeFilter, setTypeFilter] = useState("all")
+  const [selectedMaintenance, setSelectedMaintenance] = useState(null)
+  const [isUpdating, setIsUpdating] = useState(false)
 
-  const filteredMaintenances = maintenances.filter((maintenance) => {
-    const matchesSearch =
-      maintenance.unit.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      maintenance.observations.toLowerCase().includes(searchTerm.toLowerCase())
-
-    const matchesStatus = statusFilter === "all" || maintenance.status === statusFilter
-
-    const matchesType = typeFilter === "all" || maintenance.type === typeFilter
-
-    return matchesSearch && matchesStatus && matchesType
+  const form = useForm({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      estado: "pendiente",
+    },
   })
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <div className="text-center">Cargando mantenimientos...</div>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <div className="text-center text-red-500">
+          Error al cargar los mantenimientos. Por favor, intente nuevamente.
+        </div>
+      </div>
+    )
+  }
+
+  const filteredMaintenances = maintenances?.filter((maintenance) => {
+    if (!maintenance) return false;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      (maintenance.unidad_id?.toString() || '').includes(searchLower) ||
+      (maintenance.tipo?.toLowerCase() || '').includes(searchLower) ||
+      (maintenance.observaciones?.toLowerCase() || '').includes(searchLower)
+    );
+  }) || [];
+
+  const handleUpdateStatus = async (values) => {
+    try {
+      await maintenanceService.updateMaintenanceStatus(selectedMaintenance.id, values.estado)
+      toast.success("Estado actualizado correctamente")
+      setIsUpdating(false)
+      setSelectedMaintenance(null)
+      await mutate()
+    } catch (error) {
+      toast.error(error.message)
+    }
+  }
+
+  const handleEditClick = (maintenance) => {
+    setSelectedMaintenance(maintenance)
+    form.reset({
+      estado: maintenance.estado || "pendiente",
+    })
+    setIsUpdating(true)
+  }
+
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case "pendiente":
+        return <Badge variant="outline" className="border-yellow-500 text-yellow-500">Pendiente</Badge>
+      case "en_proceso":
+        return <Badge variant="outline" className="border-blue-500 text-blue-500">En Proceso</Badge>
+      case "completado":
+        return <Badge variant="outline" className="border-green-500 text-green-500">Completado</Badge>
+      default:
+        return <Badge variant="outline">Desconocido</Badge>
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex items-center">
         <Input
-          placeholder="Buscar por unidad u observaciones..."
+          placeholder="Buscar por unidad, tipo o observaciones..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"
         />
-        <div className="flex gap-2">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="Pendiente">Pendiente</SelectItem>
-              <SelectItem value="Realizado">Realizado</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Tipo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="Preventivo">Preventivo</SelectItem>
-              <SelectItem value="Correctivo">Correctivo</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -106,48 +126,94 @@ export function MaintenancesTable() {
             <TableRow>
               <TableHead>Unidad</TableHead>
               <TableHead>Tipo</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Fecha de Solicitud</TableHead>
               <TableHead>Observaciones</TableHead>
-              <TableHead className="w-[120px]">Acciones</TableHead>
+              <TableHead>Kilometraje</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead>Fecha</TableHead>
+              <TableHead className="w-[80px]">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredMaintenances.map((maintenance) => (
               <TableRow key={maintenance.id}>
-                <TableCell className="font-medium">{maintenance.unit}</TableCell>
+                <TableCell className="font-medium">{maintenance.unidad_id}</TableCell>
                 <TableCell>
-                  <Badge variant={maintenance.type === "Preventivo" ? "outline" : "secondary"}>
-                    {maintenance.type}
+                  <Badge variant={maintenance.tipo === "preventivo" ? "outline" : "secondary"}>
+                    {maintenance.tipo}
                   </Badge>
                 </TableCell>
+                <TableCell>{maintenance.observaciones}</TableCell>
+                <TableCell>{maintenance.kilometraje_actual.toLocaleString()} km</TableCell>
+                <TableCell>{getStatusBadge(maintenance.estado)}</TableCell>
+                <TableCell>{new Date(maintenance.fecha_solicitud).toLocaleDateString()}</TableCell>
                 <TableCell>
-                  <Badge variant={maintenance.status === "Pendiente" ? "outline" : "default"}>
-                    {maintenance.status}
-                  </Badge>
-                </TableCell>
-                <TableCell>{maintenance.requestDate}</TableCell>
-                <TableCell className="max-w-xs truncate">{maintenance.observations}</TableCell>
-                <TableCell>
-                  <div className="flex space-x-2">
-                    <Button variant="outline" size="icon" title="Ver detalles">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="icon" title="Editar">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    {maintenance.status === "Pendiente" && (
-                      <Button variant="outline" size="icon" title="Marcar como realizado">
-                        <CheckCircle className="h-4 w-4" />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="h-8 w-8 p-0">
+                        <span className="sr-only">Abrir menú</span>
+                        <MoreHorizontal className="h-4 w-4" />
                       </Button>
-                    )}
-                  </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => handleEditClick(maintenance)}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        Actualizar Estado
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={isUpdating} onOpenChange={setIsUpdating}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Actualizar Estado</DialogTitle>
+            <DialogDescription>
+              Selecciona el nuevo estado del mantenimiento.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleUpdateStatus)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="estado"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Estado</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un estado" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="pendiente">Pendiente</SelectItem>
+                        <SelectItem value="en_proceso">En Proceso</SelectItem>
+                        <SelectItem value="completado">Completado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsUpdating(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit">
+                  Guardar Cambios
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
