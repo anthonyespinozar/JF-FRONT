@@ -1,10 +1,20 @@
-import api from '@/utils/api';
+import { makeGetRequest, makePostRequest, makePutRequest, makeDeleteRequest } from '@/utils/api';
 
 export const unitService = {
-  // Obtener unidad asignada a un chofer
+  // Obtener todos las unidades
+  async getAllUnits() {
+    try {
+      const response = await makeGetRequest("/units");
+      return response;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Error al obtener unidades');
+    }
+  },
+
+  // Obtener unidad asignada a un chofer}
   async getDriverUnit(driverId) {
     try {
-      const response = await api.get(`/units/driver/${driverId}`);
+      const response = await makeGetRequest(`/units/driver/${driverId}`);
       return response.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Error al obtener unidad');
@@ -14,7 +24,7 @@ export const unitService = {
   // Obtener partes de una unidad
   async getUnitParts(unitId) {
     try {
-      const response = await api.get(`/parts/unit/${unitId}`);
+      const response = await makeGetRequest(`/parts/unit/${unitId}`);
       return response.data;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Error al obtener partes');

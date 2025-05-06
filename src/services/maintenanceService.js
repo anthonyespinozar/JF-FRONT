@@ -24,7 +24,13 @@ export const maintenanceService = {
   // Registrar nuevo mantenimiento
   async createMaintenance(maintenanceData) {
     try {
-      const response = await makePostRequest('/maintenances', maintenanceData);
+      // Por defecto, el estado es pendiente y se asigna un técnico
+      const dataWithDefaults = {
+        ...maintenanceData,
+        estado: "pendiente",
+        id_tecnico: maintenanceData.id_tecnico || null
+      };
+      const response = await makePostRequest('/maintenances', dataWithDefaults);
       return response;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Error al crear mantenimiento');
@@ -48,6 +54,16 @@ export const maintenanceService = {
       return response;
     } catch (error) {
       throw new Error(error.response?.data?.error || 'Error al actualizar estado');
+    }
+  },
+
+  // Asignar técnico a un mantenimiento
+  async assignTechnician(maintenanceId, technicianId) {
+    try {
+      const response = await makePutRequest(`/maintenances/${maintenanceId}/assign`, { id_tecnico: technicianId });
+      return response;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Error al asignar técnico');
     }
   }
 }; 
